@@ -79,6 +79,11 @@ const Cast = struct {
     type: InstrType,
 };
 
+const AtomicLoad = struct {
+    ptr: DeclIndex.Index,
+    type: InstrType,
+};
+
 const FunctionArgument = struct {
     value: DeclIndex.Index,
     next: FunctionArgumentIndex.OptIndex = .none,
@@ -104,6 +109,9 @@ pub const DeclInstr = union(enum) {
     zero_extend: Cast,
     sign_extend: Cast,
     truncate: Cast,
+
+    atomic_load: AtomicLoad,
+
     load_bool_constant: bool,
     enter_function: u32,
     leave_function: struct {
@@ -285,6 +293,8 @@ pub const DeclInstr = union(enum) {
             .zero_extend, .sign_extend, .truncate => |*cast| bounded_result.value.bounded_iterator.appendAssumeCapacity(&cast.value),
             .clobber, .addr_of, .logical_not, .negate => |*op| bounded_result.value.bounded_iterator.appendAssumeCapacity(op),
 
+            .atomic_load => |*a| bounded_result.value.bounded_iterator.appendAssumeCapacity(&a.ptr),
+
             .add_constant, .sub_constant, .multiply_constant, .divide_constant, .modulus_constant,
             .shift_left_constant, .shift_right_constant, .bit_and_constant, .bit_or_constant, .bit_xor_constant,
             .inplace_add_constant, .inplace_sub_constant, .inplace_multiply_constant, .inplace_divide_constant, .inplace_modulus_constant,
@@ -341,6 +351,7 @@ pub const DeclInstr = union(enum) {
     pub fn isVolatile(self: *const @This()) bool {
         switch(self.*) {
             .incomplete_phi => unreachable,
+            .atomic_load,
             .@"if", .leave_function, .goto, .enter_function, .store, .store_constant, .function_call, .function_ptr_call, .syscall,
             .inplace_add, .inplace_sub, .inplace_multiply, .inplace_divide, .inplace_modulus,
             .inplace_shift_left, .inplace_shift_right, .inplace_bit_and, .inplace_bit_or, .inplace_bit_xor,
@@ -396,6 +407,7 @@ pub const DeclInstr = union(enum) {
             .param_ref, .load_int_constant, .load, .store_constant,
             .zero_extend, .sign_extend, .truncate,
             => |cast| return cast.type,
+            .atomic_load => |a| return a.type,
             .clobber => return .u64,
             .addr_of, .stack_ref, .global_ref, .function_ref,
             => return backends.current_backend.pointer_type,
@@ -1748,6 +1760,18 @@ const IRWriter = struct {
                 .value = try self.writeValue(cast.value),
                 .type = typeFor(cast.type),
             }}),
+            .atomic_load => |a| {
+                const ptr = try self.writeValue(a.ptr);
+                // const ptr_decl = decls.get(ptr);
+
+                // const mr = ptr_decl.instr.memoryReference() orelse @panic("atomic_load requires address");
+                // const ptr_loaded = try self.emit(mr.load());
+
+                return self.emit(.{.atomic_load = .{
+                    .ptr = ptr,
+                    .type = typeFor(a.type),
+                }});
+            },
             .function_call => |fcall| {
                 var builder = function_arguments.builder();
                 var curr_arg = fcall.first_arg;
@@ -2180,6 +2204,7 @@ pub fn dumpBlock(
             .load_int_constant => |value| std.debug.print("{d}\n", .{value.value}),
             .reference_wrap => |ref| std.debug.print("deref(${d}, #{d})\n", .{@intFromEnum(ref.pointer_value), ref.pointer_value_offset}),
             .zero_extend, .sign_extend, .truncate => |cast| std.debug.print("{s}(${d})\n", .{@tagName(decl.instr), @intFromEnum(cast.value)}),
+            .atomic_load => |a| std.debug.print("{s}(${d})\n", .{@tagName(decl.instr), @intFromEnum(a.ptr)}),
             .load_bool_constant => |b| std.debug.print("{}\n", .{b}),
             .undefined => std.debug.print("undefined\n", .{}),
             .@"unreachable" => std.debug.print("unreachable\n", .{}),

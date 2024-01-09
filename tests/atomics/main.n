@@ -1,0 +1,10 @@
+const std = @import("std");
+const test_lib = @import("../test_lib.n");
+
+fn main() noreturn {
+    var value: u32 = 0;
+    var loaded: u32 = @atomic_load(u32, value.&);
+
+    test_lib.expect_equal(u32, loaded, 0);
+    test_lib.pass_test();
+}

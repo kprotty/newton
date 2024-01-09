@@ -425,6 +425,7 @@ fn writeDecl(writer: *backends.Writer, decl_idx: ir.DeclIndex.Index, uf: rega.Un
                 }, &.{}, true);
             }
         },
+        .atomic_load => |a| try mov(writer, uf, a.type, decl_idx, a.ptr, false),
         .load_int_constant => |constant| try movImmToReg(
             writer,
             constant.type,

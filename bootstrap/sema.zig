@@ -1103,6 +1103,25 @@ fn semaASTExpr(
                             }});
                         }
                     },
+                    .atomic_load => {
+                        const type_arg = ast.expressions.getOpt(curr_ast_arg).?.function_argument;
+                        const expr_arg = ast.expressions.getOpt(type_arg.next).?.function_argument;
+                        std.debug.assert(expr_arg.next == .none);
+
+                        const ty = try semaASTExpr(scope_idx, type_arg.value, true, .type, null);
+                        const ptr = try semaASTExpr(scope_idx, expr_arg.value, false, null, null);
+                        std.debug.assert(types.get(try decayValueType(ptr)).* == .pointer);
+
+                        if (force_comptime_eval) @panic("TODO: Comptime atomics");
+
+                        break :outer values.insert(.{.runtime = .{
+                            .expr = ExpressionIndex.toOpt(expressions.insert(.{.atomic_load = .{
+                                .ptr = ptr,
+                                .type = values.get(ty).type_idx,
+                            }})),
+                            .value_type = ty,
+                        }});
+                    },
                 },
                 else => inner: {
                     var callee_idx = try semaASTExpr(scope_idx, call.callee, false, null, null);
@@ -2505,11 +2524,18 @@ pub const Cast = struct {
     type: TypeIndex.Index,
 };
 
+pub const AtomicLoad = struct {
+    type: TypeIndex.Index,
+    ptr: ValueIndex.Index,
+};
+
 pub const Expression = union(enum) {
     value: ValueIndex.Index,
     sign_extend: Cast,
     zero_extend: Cast,
     truncate: Cast,
+
+    atomic_load: AtomicLoad,
 
     global: struct { offset: u32, type: PointerType },
     addr_of: ValueIndex.Index,
